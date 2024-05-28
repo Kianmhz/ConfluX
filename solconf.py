@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('telegram').setLevel(logging.WARNING)
 
-# Global list to store recent buys
+# Global list to store recent transactions
 recent_transactions = []
 
 # Timeframe within which to check for coinciding transactions (e.g., 5 minutes)
@@ -67,16 +67,29 @@ async def handle_message(update: Update, context: CallbackContext):
         recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[3] <= TIMEFRAME]
         logger.info(f"Filtered recent_transactions: {recent_transactions}")
 
-        # Check for confluence
-        wallets = set()
+        # Check for confluence of buys
+        buys = set()
         for transaction in recent_transactions:
-            if transaction[1] == "Buy" and transaction[2] == contract_address:
-                wallets.add(transaction[0])
+            if transaction[2] == contract_address and transaction[1] == "Buy":
+                buys.add(transaction[0])
 
-        logger.info(f"Wallets set: {wallets}")
+        logger.info(f"Buys set: {buys}")
 
-        if len(wallets) > 1:
-            await update.message.reply_text(f'Confluence detected! Wallets {wallets} bought {contract_address} within the last {TIMEFRAME}.')
+        if len(buys) > 1:
+            # Check for sells
+            sells = set()
+            for transaction in recent_transactions:
+                if transaction[2] == contract_address and transaction[1] == "Sell":
+                    sells.add(transaction[0])
+
+            logger.info(f"Sells set: {sells}")
+
+            confluence_message = f"Confluence detected!\n{contract_address}\n"
+            for wallet in buys:
+                confluence_message += f"🟢 {wallet}\n"
+            for wallet in sells:
+                confluence_message += f"🔴 {wallet}\n"
+            await update.message.reply_text(confluence_message)
     else:
         logger.info("No match found.")
 
