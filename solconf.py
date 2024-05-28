@@ -9,49 +9,76 @@ from datetime import datetime, timedelta
 # Load environment variables from .env file
 load_dotenv()
 
-# Enable logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# Enable logging to a file
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler("bot_debug.log"),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
-# Global list to store recent buys
-recent_buys = []
+# Set logging levels for specific loggers to avoid unnecessary logs
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('telegram').setLevel(logging.WARNING)
 
-# Timeframe within which to check for coinciding buys (e.g., 5 minutes)
+# Global list to store recent buys
+recent_transactions = []
+
+# Timeframe within which to check for coinciding transactions (e.g., 5 minutes)
 TIMEFRAME = timedelta(minutes=5)
 
-# Function to handle the /start command
+# Asynchronous function to handle the /start command
 async def start(update: Update, context: CallbackContext):
     await update.message.reply_text('Hi! I am your confluence bot.')
 
-# Function to handle incoming messages
+# Asynchronous function to handle incoming messages
 async def handle_message(update: Update, context: CallbackContext):
-    global recent_buys  # Declare recent_buys as global to modify it within this function
+    global recent_transactions  # Declare recent_transactions as global to modify it within this function
 
     message = update.message.text
+    logger.info(f"Received message: {message}")
 
-    # Regex pattern to extract wallet, coin, and timestamp
-    pattern = r'Sent \d+\.\d+ (\w+) .* Received \d+\.\d+ (\w+)'
+    # Regex pattern to extract the name, transaction type, and contract address
+    pattern = (
+        r'(?P<name>\w+).*'                       # Extract the name
+        r'Token (?P<transaction_type>Buy|Sell)'  # Extract the transaction type (Token Buy or Token Sell)
+        r'.*\n(?P<contract_address>\w+)'         # Extract the contract address
+    )
+
     match = re.search(pattern, message)
-    
-    if match:
-        wallet = match.group(1)
-        coin = match.group(2)
-        timestamp = datetime.now()
 
-        # Add to recent buys
-        recent_buys.append((wallet, coin, timestamp))
+    if match:
+        name = match.group('name')
+        transaction_type = match.group('transaction_type')
+        contract_address = match.group('contract_address')
+
+        # Log extracted information
+        logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}")
+
+        # Add to recent transactions
+        timestamp = datetime.now()
+        recent_transactions.append((name, transaction_type, contract_address, timestamp))
+        logger.info(f"Updated recent_transactions: {recent_transactions}")
 
         # Remove old entries
-        recent_buys = [buy for buy in recent_buys if timestamp - buy[2] <= TIMEFRAME]
+        recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[3] <= TIMEFRAME]
+        logger.info(f"Filtered recent_transactions: {recent_transactions}")
 
         # Check for confluence
         wallets = set()
-        for buy in recent_buys:
-            if buy[1] == coin:
-                wallets.add(buy[0])
+        for transaction in recent_transactions:
+            if transaction[1] == "Buy" and transaction[2] == contract_address:
+                wallets.add(transaction[0])
+
+        logger.info(f"Wallets set: {wallets}")
 
         if len(wallets) > 1:
-            await update.message.reply_text(f'Confluence detected! Wallets {wallets} bought {coin} within the last {TIMEFRAME} minutes.')
+            await update.message.reply_text(f'Confluence detected! Wallets {wallets} bought {contract_address} within the last {TIMEFRAME}.')
+    else:
+        logger.info("No match found.")
 
 # Load the bot token from environment variables
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
