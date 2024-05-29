@@ -9,12 +9,12 @@ from datetime import datetime, timedelta
 # Load environment variables from .env file
 load_dotenv()
 
-# Enable logging to a file
+# Enable logging to a file with UTF-8 encoding
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levellevel)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     handlers=[
-        logging.FileHandler("bot_debug.log"),
+        logging.FileHandler("bot_debug.log", encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -39,35 +39,34 @@ async def handle_message(update: Update, context: CallbackContext):
     global recent_transactions  # Declare recent_transactions as global to modify it within this function
 
     message = update.message.text
-    logger.info(f"Received message: {message}")
 
-    # Regex pattern to extract the name, transaction type, and contract address
+    # Regex pattern to extract the name, transaction type, contract address, and market cap
     pattern = (
         r'(?P<name>\w+).*'                       # Extract the name
         r'Token (?P<transaction_type>Buy|Sell)'  # Extract the transaction type (Token Buy or Token Sell)
-        r'.*\n(?P<contract_address>\w+)'         # Extract the contract address
+        r'.*\n(?P<contract_address>\w+).*'       # Extract the contract address
+        r'.*Mkt\. Cap \(FDV\): \$?(?P<market_cap>[\d,]+)'  # Extract the market cap
     )
 
-    match = re.search(pattern, message)
+    match = re.search(pattern, message, re.DOTALL)
 
     if match:
         name = match.group('name')
         transaction_type = match.group('transaction_type')
         contract_address = match.group('contract_address')
+        market_cap = match.group('market_cap')
 
         # Log extracted information
-        logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}")
+        logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}, market_cap={market_cap}")
 
-        # Example reply to the user
-        await update.message.reply_text(f"Name: {name}\nTransaction Type: {transaction_type}\nContract Address: {contract_address}")
 
         # Add to recent transactions
         timestamp = datetime.now()
-        recent_transactions.append((name, transaction_type, contract_address, timestamp))
+        recent_transactions.append((name, transaction_type, contract_address, market_cap, timestamp))
         logger.info(f"Updated recent_transactions: {recent_transactions}")
 
         # Remove old entries
-        recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[3] <= TIMEFRAME]
+        recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[4] <= TIMEFRAME]
         logger.info(f"Filtered recent_transactions: {recent_transactions}")
 
         # Check for confluence of buys
@@ -89,9 +88,9 @@ async def handle_message(update: Update, context: CallbackContext):
 
             confluence_message = f"Confluence detected!\n{contract_address}\n"
             for wallet in buys:
-                confluence_message += f"🟢 {wallet}\n"
+                confluence_message += f"🟢 {wallet} -> Market Cap: ${market_cap}\n"
             for wallet in sells:
-                confluence_message += f"🔴 {wallet}\n"
+                confluence_message += f"🔴 {wallet} -> Market Cap: ${market_cap}\n"
             await update.message.reply_text(confluence_message)
     else:
         logger.info("No match found.")
