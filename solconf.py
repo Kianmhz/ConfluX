@@ -28,7 +28,7 @@ logging.getLogger('telegram').setLevel(logging.WARNING)
 recent_transactions = []
 
 # Timeframe within which to check for coinciding transactions (e.g., 5 minutes)
-TIMEFRAME = timedelta(minutes=5)
+TIMEFRAME = timedelta(minutes=240)
 
 # Asynchronous function to handle the /start command
 async def start(update: Update, context: CallbackContext):
