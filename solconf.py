@@ -11,7 +11,7 @@ load_dotenv()
 
 # Enable logging to a file
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levellevel)s - %(message)s',
     level=logging.INFO,
     handlers=[
         logging.FileHandler("bot_debug.log"),
@@ -58,6 +58,9 @@ async def handle_message(update: Update, context: CallbackContext):
         # Log extracted information
         logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}")
 
+        # Example reply to the user
+        await update.message.reply_text(f"Name: {name}\nTransaction Type: {transaction_type}\nContract Address: {contract_address}")
+
         # Add to recent transactions
         timestamp = datetime.now()
         recent_transactions.append((name, transaction_type, contract_address, timestamp))
@@ -68,21 +71,21 @@ async def handle_message(update: Update, context: CallbackContext):
         logger.info(f"Filtered recent_transactions: {recent_transactions}")
 
         # Check for confluence of buys
-        buys = set()
+        buys = []
         for transaction in recent_transactions:
             if transaction[2] == contract_address and transaction[1] == "Buy":
-                buys.add(transaction[0])
+                buys.append(transaction[0])
 
-        logger.info(f"Buys set: {buys}")
+        logger.info(f"Buys list: {buys}")
 
         if len(buys) > 1:
             # Check for sells
-            sells = set()
+            sells = []
             for transaction in recent_transactions:
                 if transaction[2] == contract_address and transaction[1] == "Sell":
-                    sells.add(transaction[0])
+                    sells.append(transaction[0])
 
-            logger.info(f"Sells set: {sells}")
+            logger.info(f"Sells list: {sells}")
 
             confluence_message = f"Confluence detected!\n{contract_address}\n"
             for wallet in buys:
