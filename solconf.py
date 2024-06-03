@@ -3,8 +3,8 @@ import os
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from datetime import datetime, timedelta
 import re
+from datetime import datetime, timedelta
 
 # Load environment variables from .env file
 load_dotenv()
@@ -30,30 +30,6 @@ recent_transactions = []
 # Timeframe within which to check for coinciding transactions (e.g., 5 minutes)
 TIMEFRAME = timedelta(minutes=240)
 
-# Parsing function
-def parse_message(message):
-    pattern = (
-        r'(?P<name>\w+).*'                       # Extract the name
-        r'Token (?P<transaction_type>Buy|Sell)'  # Extract the transaction type (Token Buy or Token Sell)
-        r'.*\n(?P<contract_address>\w+).*'       # Extract the contract address
-        r'.*Mkt\. Cap \(FDV\): \$?(?P<market_cap>[\d,]+)'  # Extract the market cap
-    )
-
-    match = re.search(pattern, message, re.DOTALL)
-    if match:
-        name = match.group('name')
-        transaction_type = match.group('transaction_type')
-        contract_address = match.group('contract_address')
-        market_cap = match.group('market_cap')
-        return {
-            'name': name,
-            'transaction_type': transaction_type,
-            'contract_address': contract_address,
-            'market_cap': market_cap
-        }
-    else:
-        return None
-
 # Asynchronous function to handle the /start command
 async def start(update: Update, context: CallbackContext):
     await update.message.reply_text('Hi! I am your confluence bot.')
@@ -64,15 +40,25 @@ async def handle_message(update: Update, context: CallbackContext):
 
     message = update.message.text
 
-    parsed_data = parse_message(message)
-    if parsed_data:
-        name = parsed_data['name']
-        transaction_type = parsed_data['transaction_type']
-        contract_address = parsed_data['contract_address']
-        market_cap = parsed_data['market_cap']
+    # Regex pattern to extract the name, transaction type, contract address, and market cap
+    pattern = (
+        r'(?P<name>\w+).*'                       # Extract the name
+        r'Token (?P<transaction_type>Buy|Sell)'  # Extract the transaction type (Token Buy or Token Sell)
+        r'.*\n(?P<contract_address>\w+).*'       # Extract the contract address
+        r'.*Mkt\. Cap \(FDV\): \$?(?P<market_cap>[\d,]+)'  # Extract the market cap
+    )
+
+    match = re.search(pattern, message, re.DOTALL)
+
+    if match:
+        name = match.group('name')
+        transaction_type = match.group('transaction_type')
+        contract_address = match.group('contract_address')
+        market_cap = match.group('market_cap')
 
         # Log extracted information
         logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}, market_cap={market_cap}")
+
 
         # Add to recent transactions
         timestamp = datetime.now()

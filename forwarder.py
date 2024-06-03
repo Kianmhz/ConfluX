@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
-import requests
 import logging
 import asyncio
 
@@ -10,38 +9,46 @@ load_dotenv()
 
 api_id = os.getenv("API_ID")
 api_hash = os.getenv("API_HASH")
-bot_token = os.getenv("TELEGRAM_TOKEN")
-forward_to_chat_id = os.getenv("CHAT_ID")
+bot_chat_id = int(os.getenv("CHAT_ID"))
 group_username = os.getenv("GROUP_USERNAME")
+defined_bot_username = os.getenv("DEFINED_BOT_USERNAME")
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create the Telethon client
-client = TelegramClient('session_name', api_id, api_hash)
-
-async def send_to_bot(message):
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
-        "chat_id": forward_to_chat_id,
-        "text": message
-    }
-    response = requests.post(url, data=payload)
-    logger.info(f"Forwarded message: {message}")
-    logger.info(f"Response: {response.json()}")
+client = TelegramClient("session_name", api_id, api_hash)
 
 @client.on(events.NewMessage(chats=group_username))
 async def handler(event):
-    sender = await event.get_sender()
-    sender_id = sender.id
-    sender_username = sender.username
+    try:
+        sender = await event.get_sender()
+        if sender is None:
+            logger.error("Failed to get sender information")
+            return
 
-    logger.info(f"Received message: {event.message.message} from {sender_id} ({sender_username})")
+        sender_username = sender.username
 
-    # Forward the message to your bot
-    message_text = event.message.message
-    await send_to_bot(message_text)
+        # Check if the message is from the Defined Bot
+        if sender_username != defined_bot_username:
+            logger.info(f"Ignored message from {sender_username}")
+            return
+
+        logger.info(f"Received message: {event.message.message} from {sender_username}")
+
+        # Copy the message from Defined Bot and send it as if from your account
+        message_text = event.message.message
+        sent_message = await client.send_message(group_username, message_text)
+        logger.info(f"Message sent: {message_text}")
+
+        # Delete the copied message (sent from your account)
+        await asyncio.sleep(2)  # Give some time for the message to appear
+        await sent_message.delete()
+        logger.info(f"Message deleted: {message_text}")
+
+    except Exception as e:
+        logger.error(f"Error handling message: {str(e)}")
 
 async def main():
     await client.start()
