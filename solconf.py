@@ -59,7 +59,6 @@ async def handle_message(update: Update, context: CallbackContext):
         # Log extracted information
         logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}, market_cap={market_cap}")
 
-
         # Add to recent transactions
         timestamp = datetime.now()
         recent_transactions.append((name, transaction_type, contract_address, market_cap, timestamp))
@@ -73,7 +72,7 @@ async def handle_message(update: Update, context: CallbackContext):
         buys = []
         for transaction in recent_transactions:
             if transaction[2] == contract_address and transaction[1] == "Buy":
-                buys.append(transaction[0])
+                buys.append(transaction)
 
         logger.info(f"Buys list: {buys}")
 
@@ -82,15 +81,15 @@ async def handle_message(update: Update, context: CallbackContext):
             sells = []
             for transaction in recent_transactions:
                 if transaction[2] == contract_address and transaction[1] == "Sell":
-                    sells.append(transaction[0])
+                    sells.append(transaction)
 
             logger.info(f"Sells list: {sells}")
 
             confluence_message = f"Confluence detected!\n{contract_address}\n"
-            for wallet in buys:
-                confluence_message += f"🟢 {wallet} -> Market Cap: ${market_cap}\n"
-            for wallet in sells:
-                confluence_message += f"🔴 {wallet} -> Market Cap: ${market_cap}\n"
+            for transaction in buys:
+                confluence_message += f"🟢 {transaction[0]} -> Market Cap: ${transaction[3]}\n"
+            for transaction in sells:
+                confluence_message += f"🔴 {transaction[0]} -> Market Cap: ${transaction[3]}\n"
             await update.message.reply_text(confluence_message)
     else:
         logger.info("No match found.")
