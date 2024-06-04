@@ -1,3 +1,4 @@
 .env
 bot_debug.log
 *.session
+session_name.session-journal

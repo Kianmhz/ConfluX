@@ -30,6 +30,9 @@ recent_transactions = []
 # Timeframe within which to check for coinciding transactions (e.g., 5 minutes)
 TIMEFRAME = timedelta(minutes=240)
 
+# Maximum number of transactions to keep in the list
+MAX_TRANSACTIONS = 16
+
 # Asynchronous function to handle the /start command
 async def start(update: Update, context: CallbackContext):
     await update.message.reply_text('Hi! I am your confluence bot.')
@@ -40,11 +43,12 @@ async def handle_message(update: Update, context: CallbackContext):
 
     message = update.message.text
 
-    # Regex pattern to extract the name, transaction type, contract address, and market cap
+    # Regex pattern to extract the name, transaction type, contract address, market cap, and received coin name
     pattern = (
-        r'(?P<name>\w+).*'                       # Extract the name
-        r'Token (?P<transaction_type>Buy|Sell)'  # Extract the transaction type (Token Buy or Token Sell)
-        r'.*\n(?P<contract_address>\w+).*'       # Extract the contract address
+        r'(?P<name>\w+).*'                               # Extract the name
+        r'Token (?P<transaction_type>Buy|Sell).*'        # Extract the transaction type (Token Buy or Token Sell)
+        r'\n(?P<contract_address>\w+).*'                 # Extract the contract address
+        r'⬅️ Received: [\d,.]+ (?P<received_coin>\w+)'    # Extract the received coin name
         r'.*Mkt\. Cap \(FDV\): \$?(?P<market_cap>[\d,]+)'  # Extract the market cap
     )
 
@@ -55,18 +59,24 @@ async def handle_message(update: Update, context: CallbackContext):
         transaction_type = match.group('transaction_type')
         contract_address = match.group('contract_address')
         market_cap = match.group('market_cap')
+        received_coin = match.group('received_coin')
 
         # Log extracted information
-        logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}, market_cap={market_cap}")
+        logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}, market_cap={market_cap}, received_coin={received_coin}")
 
         # Add to recent transactions
         timestamp = datetime.now()
-        recent_transactions.append((name, transaction_type, contract_address, market_cap, timestamp))
+        recent_transactions.append((name, transaction_type, contract_address, market_cap, received_coin, timestamp))
         logger.info(f"Updated recent_transactions: {recent_transactions}")
 
         # Remove old entries
-        recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[4] <= TIMEFRAME]
+        recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[5] <= TIMEFRAME]
         logger.info(f"Filtered recent_transactions: {recent_transactions}")
+
+        # Ensure the recent_transactions list doesn't exceed the max limit
+        if len(recent_transactions) > MAX_TRANSACTIONS:
+            recent_transactions = recent_transactions[-MAX_TRANSACTIONS:]
+            logger.info(f"Trimmed recent_transactions: {recent_transactions}")
 
         # Check for confluence of buys
         buys = []
@@ -87,9 +97,9 @@ async def handle_message(update: Update, context: CallbackContext):
 
             confluence_message = f"Confluence detected!\n{contract_address}\n"
             for transaction in buys:
-                confluence_message += f"🟢 {transaction[0]} -> Market Cap: ${transaction[3]}\n"
+                confluence_message += f"🟢 {transaction[0]} ({transaction[4]}) -> Market Cap: ${transaction[3]}\n"
             for transaction in sells:
-                confluence_message += f"🔴 {transaction[0]} -> Market Cap: ${transaction[3]}\n"
+                confluence_message += f"🔴 {transaction[0]} ({transaction[4]}) -> Market Cap: ${transaction[3]}\n"
             await update.message.reply_text(confluence_message)
     else:
         logger.info("No match found.")
