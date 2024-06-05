@@ -13,13 +13,18 @@ load_dotenv()
 
 api_id = os.getenv("API_ID")
 api_hash = os.getenv("API_HASH")
-group_username = os.getenv("GROUP_USERNAME")
+group_username = ["nbhsoltracker", "nbhevm"]
 defined_bot_username = os.getenv("DEFINED_BOT_USERNAME")
+shuriken_bot_username = "https://t.me/ShurikenTradeBot"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Set logging levels for specific loggers to avoid unnecessary logs
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('telegram').setLevel(logging.WARNING)
 
 # Create the Telethon client
 client = TelegramClient("session_name", api_id, api_hash)
@@ -32,8 +37,8 @@ TIMEFRAME = timedelta(minutes=240)
 
 # Define a mapping from source group to target group (adjust as needed)
 chat_mapping = {
-    "nbhsoltracker": "https://t.me/2",  # Replace with actual target chat username or ID
-    "nbhevm": "https://t.me/1"  # Replace with actual target chat username or ID
+    "nbhsoltracker": "https://t.me/nbhsoltracker",  # Replace with actual target chat username or ID
+    "nbhevm": "https://t.me/nbhevm"  # Replace with actual target chat username or ID
 }
 
 @client.on(events.NewMessage(chats=group_username))
@@ -41,14 +46,12 @@ async def handler(event):
     try:
         sender = await event.get_sender()
         if sender is None:
-            logger.error("Failed to get sender information")
             return
 
         sender_username = sender.username
 
         # Check if the message is from the Defined Bot
         if sender_username != defined_bot_username:
-            logger.info(f"Ignored message from {sender_username}")
             return
 
         # Identify the source chat
@@ -68,7 +71,6 @@ async def handler(event):
         # Delete the copied message (sent from your account)
         await asyncio.sleep(2)  # Give some time for the message to appear
         await sent_message.delete()
-        logger.info(f"Message deleted from {target_chat}")
 
     except Exception as e:
         logger.error(f"Error handling message: {str(e)}")
@@ -122,9 +124,11 @@ async def handle_message(update: Update, context: CallbackContext):
             if transaction[2] == contract_address and transaction[1] == "Buy":
                 buys.append(transaction)
 
-        logger.info(f"Buys list: {buys}")
 
         if len(buys) > 1:
+            if len(buys) == 2:
+                await client.send_message(shuriken_bot_username, contract_address)
+            # Check for sells
             sells = []
             for transaction in recent_transactions:
                 if transaction[2] == contract_address and transaction[1] == "Sell":
