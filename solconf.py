@@ -1,34 +1,77 @@
-import logging
 import os
 from dotenv import load_dotenv
+from telethon import TelegramClient, events
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+import logging
 import re
+import asyncio
 from datetime import datetime, timedelta
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
-# Enable logging to a file with UTF-8 encoding
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[
-        logging.FileHandler("bot_debug.log", encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
+api_id = os.getenv("API_ID")
+api_hash = os.getenv("API_HASH")
+group_username = os.getenv("GROUP_USERNAME")
+defined_bot_username = os.getenv("DEFINED_BOT_USERNAME")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Set logging levels for specific loggers to avoid unnecessary logs
-logging.getLogger('httpx').setLevel(logging.WARNING)
-logging.getLogger('telegram').setLevel(logging.WARNING)
+# Create the Telethon client
+client = TelegramClient("session_name", api_id, api_hash)
 
 # Global list to store recent transactions
 recent_transactions = []
 
-# Timeframe within which to check for coinciding transactions (e.g., 5 minutes)
+# Timeframe within which to check for coinciding transactions
 TIMEFRAME = timedelta(minutes=240)
+
+# Define a mapping from source group to target group (adjust as needed)
+chat_mapping = {
+    "nbhsoltracker": "https://t.me/2",  # Replace with actual target chat username or ID
+    "nbhevm": "https://t.me/1"  # Replace with actual target chat username or ID
+}
+
+@client.on(events.NewMessage(chats=group_username))
+async def handler(event):
+    try:
+        sender = await event.get_sender()
+        if sender is None:
+            logger.error("Failed to get sender information")
+            return
+
+        sender_username = sender.username
+
+        # Check if the message is from the Defined Bot
+        if sender_username != defined_bot_username:
+            logger.info(f"Ignored message from {sender_username}")
+            return
+
+        # Identify the source chat
+        source_chat = event.chat.username
+
+        # Determine the target chat based on the source chat
+        target_chat = chat_mapping.get(source_chat)
+        if not target_chat:
+            logger.error(f"No mapping found for source chat: {source_chat}")
+            return
+
+        # Copy the message from Defined Bot and send it as if from your account
+        message_text = event.message.message
+        sent_message = await client.send_message(target_chat, message_text)
+        logger.info(f"Message sent to {target_chat}")
+
+        # Delete the copied message (sent from your account)
+        await asyncio.sleep(2)  # Give some time for the message to appear
+        await sent_message.delete()
+        logger.info(f"Message deleted from {target_chat}")
+
+    except Exception as e:
+        logger.error(f"Error handling message: {str(e)}")
 
 # Asynchronous function to handle the /start command
 async def start(update: Update, context: CallbackContext):
@@ -69,11 +112,9 @@ async def handle_message(update: Update, context: CallbackContext):
         # Add to recent transactions
         timestamp = datetime.now()
         recent_transactions.append((name, transaction_type, contract_address, market_cap, received_coin, timestamp))
-        logger.info(f"Updated recent_transactions: {recent_transactions}")
 
         # Remove old entries
         recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[5] <= TIMEFRAME]
-        logger.info(f"Filtered recent_transactions: {recent_transactions}")
 
         # Check for confluence of buys
         buys = []
@@ -84,13 +125,11 @@ async def handle_message(update: Update, context: CallbackContext):
         logger.info(f"Buys list: {buys}")
 
         if len(buys) > 1:
-            # Check for sells
             sells = []
             for transaction in recent_transactions:
                 if transaction[2] == contract_address and transaction[1] == "Sell":
                     sells.append(transaction)
 
-            logger.info(f"Sells list: {sells}")
 
             confluence_message = f"Confluence detected!\n{contract_address}\n"
             for transaction in buys:
@@ -100,13 +139,6 @@ async def handle_message(update: Update, context: CallbackContext):
             await update.message.reply_text(confluence_message)
     else:
         logger.info("No match found.")
-
-# Load the bot token from environment variables
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-
-if not TELEGRAM_TOKEN:
-    logger.error("No TELEGRAM_TOKEN found. Please set it in the environment.")
-    exit(1)
 
 # Initialize and start the bot
 application = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -120,5 +152,18 @@ application.add_handler(CommandHandler("chat_id", chat_id))
 # Register the message handler
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# Start the Bot
-application.run_polling()
+async def main():
+    # Start the Telethon client
+    await client.start()
+    logger.info("Client Created")
+
+    # Run the Telegram bot
+    async with application:
+        await application.start()
+        await application.updater.start_polling()
+        await client.run_until_disconnected()
+        await application.stop()
+        await application.shutdown()
+
+if __name__ == '__main__':
+    asyncio.run(main())
