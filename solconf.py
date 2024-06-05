@@ -30,12 +30,14 @@ recent_transactions = []
 # Timeframe within which to check for coinciding transactions (e.g., 5 minutes)
 TIMEFRAME = timedelta(minutes=240)
 
-# Maximum number of transactions to keep in the list
-MAX_TRANSACTIONS = 16
-
 # Asynchronous function to handle the /start command
 async def start(update: Update, context: CallbackContext):
     await update.message.reply_text('Hi! I am your confluence bot.')
+
+# Asynchronous function to handle the /chat_id command
+async def chat_id(update: Update, context: CallbackContext):
+    chat_id = update.message.chat_id
+    await update.message.reply_text(f"Chat ID: {chat_id}")
 
 # Asynchronous function to handle incoming messages
 async def handle_message(update: Update, context: CallbackContext):
@@ -72,11 +74,6 @@ async def handle_message(update: Update, context: CallbackContext):
         # Remove old entries
         recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[5] <= TIMEFRAME]
         logger.info(f"Filtered recent_transactions: {recent_transactions}")
-
-        # Ensure the recent_transactions list doesn't exceed the max limit
-        if len(recent_transactions) > MAX_TRANSACTIONS:
-            recent_transactions = recent_transactions[-MAX_TRANSACTIONS:]
-            logger.info(f"Trimmed recent_transactions: {recent_transactions}")
 
         # Check for confluence of buys
         buys = []
@@ -116,6 +113,9 @@ application = Application.builder().token(TELEGRAM_TOKEN).build()
 
 # Register the /start command handler
 application.add_handler(CommandHandler("start", start))
+
+# Register the /chat_id command handler
+application.add_handler(CommandHandler("chat_id", chat_id))
 
 # Register the message handler
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
