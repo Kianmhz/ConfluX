@@ -21,8 +21,8 @@ client = TelegramClient("session_name", api_id, api_hash)
 
 # Define a mapping from source group to target group (adjust as needed)
 chat_mapping = {
-    "nbhsoltracker": "https://t.me/2",  # Replace with actual target chat username or ID
-    "nbhevm": "https://t.me/1"  # Replace with actual target chat username or ID
+    "nbhsoltracker": "https://t.me/nbhsoltracker",  # Replace with actual target chat username or ID
+    "nbhevm": "https://t.me/nbhevm"  # Replace with actual target chat username or ID
 }
 
 @client.on(events.NewMessage(chats=group_usernames))
@@ -64,11 +64,7 @@ async def handler(event):
     except Exception as e:
         logger.error(f"Error handling message: {str(e)}")
 
-async def main():
-    await client.start()
-    logger.info("Client Created")
-    await client.run_until_disconnected()
-
-if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+# Start the client and run until disconnected
+client.start()
+logger.info("Client Created")
+client.run_until_disconnected()
