@@ -15,7 +15,6 @@ api_id = os.getenv("API_ID")
 api_hash = os.getenv("API_HASH")
 group_username = ["nbhsoltracker", "nbhevm"]
 defined_bot_username = os.getenv("DEFINED_BOT_USERNAME")
-shuriken_bot_username = "https://t.me/ShurikenTradeBot"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # Setup logging
@@ -90,12 +89,12 @@ async def handle_message(update: Update, context: CallbackContext):
 
     message = update.message.text
 
-    # Regex pattern to extract the name, transaction type, contract address, market cap, and received coin name
+    # Regex pattern to extract the name, transaction type, contract address, market cap, received coin, and percentage
     pattern = (
         r'(?P<name>\w+).*'                               # Extract the name
         r'Token (?P<transaction_type>Buy|Sell).*'        # Extract the transaction type (Token Buy or Token Sell)
         r'\n(?P<contract_address>\w+).*'                 # Extract the contract address
-        r'⬅️ Received: [\d,.]+ (?P<received_coin>\w+)'    # Extract the received coin name
+        r'[⬅️➡️] (?:Sent|Received): [\d,.]+ (?P<received_coin>\w+) - (?P<percentage>[\d,.]+%)'  # Extract the received/sent coin and percentage
         r'.*Mkt\. Cap \(FDV\): \$?(?P<market_cap>[\d,]+)'  # Extract the market cap
     )
 
@@ -107,16 +106,17 @@ async def handle_message(update: Update, context: CallbackContext):
         contract_address = match.group('contract_address')
         market_cap = match.group('market_cap')
         received_coin = match.group('received_coin')
+        percentage = match.group('percentage')
 
         # Log extracted information
-        logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}, market_cap={market_cap}, received_coin={received_coin}")
+        logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}, market_cap={market_cap}, received_coin={received_coin}, percentage={percentage}")
 
         # Add to recent transactions
         timestamp = datetime.now()
-        recent_transactions.append((name, transaction_type, contract_address, market_cap, received_coin, timestamp))
+        recent_transactions.append((name, transaction_type, contract_address, market_cap, received_coin, percentage, timestamp))
 
         # Remove old entries
-        recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[5] <= TIMEFRAME]
+        recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[6] <= TIMEFRAME]
 
         # Check for confluence of buys
         buys = []
@@ -124,22 +124,18 @@ async def handle_message(update: Update, context: CallbackContext):
             if transaction[2] == contract_address and transaction[1] == "Buy":
                 buys.append(transaction)
 
-
         if len(buys) > 1:
-            if len(buys) == 2:
-                await client.send_message(shuriken_bot_username, contract_address)
             # Check for sells
             sells = []
             for transaction in recent_transactions:
                 if transaction[2] == contract_address and transaction[1] == "Sell":
                     sells.append(transaction)
 
-
             confluence_message = f"Confluence detected!\n{contract_address}\n"
             for transaction in buys:
-                confluence_message += f"🟢 {transaction[0]} ({transaction[4]}) -> Market Cap: ${transaction[3]}\n"
+                confluence_message += f"🟢 {transaction[0]} ({transaction[4]} - {transaction[5]}) -> Market Cap: ${transaction[3]}\n"
             for transaction in sells:
-                confluence_message += f"🔴 {transaction[0]} ({transaction[4]}) -> Market Cap: ${transaction[3]}\n"
+                confluence_message += f"🔴 {transaction[0]} ({transaction[4]} - {transaction[5]}) -> Market Cap: ${transaction[3]}\n"
             await update.message.reply_text(confluence_message)
     else:
         logger.info("No match found.")
