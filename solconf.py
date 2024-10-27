@@ -34,6 +34,9 @@ recent_transactions = []
 # Timeframe within which to check for coinciding transactions
 TIMEFRAME = timedelta(minutes=240)
 
+# Global set to track contracts with a first confluence ping
+first_confluence_contracts = set()
+
 # Define a mapping from source group to target group (adjust as needed)
 chat_mapping = {
     "nbhsoltracker": "https://t.me/nbhsoltracker",  # Replace with actual target chat username or ID
@@ -85,11 +88,11 @@ async def chat_id(update: Update, context: CallbackContext):
 
 # Asynchronous function to handle incoming messages
 async def handle_message(update: Update, context: CallbackContext):
-    global recent_transactions  # Declare recent_transactions as global to modify it within this function
+    global recent_transactions, first_confluence_contracts
 
     message = update.message.text
 
-    # Regex pattern to extract the name, transaction type, contract address, market cap, received coin, and percentage
+    # Regex pattern to extract the necessary information
     pattern = (
         r'(?P<name>\w+).*'                               # Extract the name
         r'Token (?P<transaction_type>Buy|Sell).*'        # Extract the transaction type (Token Buy or Token Sell)
@@ -108,35 +111,52 @@ async def handle_message(update: Update, context: CallbackContext):
         received_coin = match.group('received_coin')
         percentage = match.group('percentage')
 
-        # Log extracted information
-        logger.info(f"Match found: name={name}, transaction_type={transaction_type}, contract_address={contract_address}, market_cap={market_cap}, received_coin={received_coin}, percentage={percentage}")
+        logger.info(f"Match found: name={name}, transaction_type={transaction_type}, "
+                    f"contract_address={contract_address}, market_cap={market_cap}, "
+                    f"received_coin={received_coin}, percentage={percentage}")
 
-        # Add to recent transactions
         timestamp = datetime.now()
-        recent_transactions.append((name, transaction_type, contract_address, market_cap, received_coin, percentage, timestamp))
+        recent_transactions.append((name, transaction_type, contract_address, 
+                                    market_cap, received_coin, percentage, timestamp))
 
-        # Remove old entries
-        recent_transactions = [transaction for transaction in recent_transactions if timestamp - transaction[6] <= TIMEFRAME]
+        # Clean expired transactions
+        recent_transactions = [
+            t for t in recent_transactions if timestamp - t[6] <= TIMEFRAME
+        ]
+
+        # Clean expired contracts from the set
+        active_contracts = {t[2] for t in recent_transactions}
+        first_confluence_contracts.intersection_update(active_contracts)
 
         # Check for confluence of buys
-        buys = []
-        for transaction in recent_transactions:
-            if transaction[2] == contract_address and transaction[1] == "Buy":
-                buys.append(transaction)
+        buys = [t for t in recent_transactions if t[2] == contract_address and t[1] == "Buy"]
 
         if len(buys) > 1:
-            # Check for sells
-            sells = []
-            for transaction in recent_transactions:
-                if transaction[2] == contract_address and transaction[1] == "Sell":
-                    sells.append(transaction)
+            sells = [t for t in recent_transactions if t[2] == contract_address and t[1] == "Sell"]
 
-            confluence_message = f"Confluence detected!\n{contract_address}\n"
-            for transaction in buys:
-                confluence_message += f"🟢 {transaction[0]} ({transaction[4]} - {transaction[5]}) -> Market Cap: ${transaction[3]}\n"
-            for transaction in sells:
-                confluence_message += f"🔴 {transaction[0]} ({transaction[4]} - {transaction[5]}) -> Market Cap: ${transaction[3]}\n"
-            await update.message.reply_text(confluence_message)
+            # Construct the DEX URL with the contract address (CA)
+            dex_url = f"https://dexscreener.com/solana/{contract_address}"
+
+            # Initialize the confluence message
+            confluence_message = (
+                f"{received_coin} | <a href='{dex_url}'>DEX</a>\n"  # Clickable DEX text
+                f"<code>{contract_address}</code>\n"  # Contract address in a code block for easy copying
+            )
+
+            # Add buys
+            for t in buys:
+                confluence_message += f"🟢 {t[0]} - {t[5]} -> ${t[3]} mc\n"  # Example: 🟢 miskens - 0.42% -> $32,783 mc
+
+            # Add sells
+            for t in sells:
+                confluence_message += f"🔴 {t[0]} - {t[5]} -> ${t[3]} mc\n"  # Example: 🔴 miskens - 0.30% -> $32,783 mc
+
+            # Add the #first tag only if this is the first confluence
+            if contract_address not in first_confluence_contracts:
+                confluence_message += "\n#first"
+                first_confluence_contracts.add(contract_address)
+
+            await update.message.reply_text(confluence_message, parse_mode='HTML', disable_web_page_preview=True)
     else:
         logger.info("No match found.")
 
