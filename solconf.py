@@ -7,6 +7,7 @@ import logging
 import re
 import asyncio
 from datetime import datetime, timedelta
+from collections import deque  # Import deque for efficient queue management
 
 # Load environment variables
 load_dotenv()
@@ -28,14 +29,14 @@ logging.getLogger('telegram').setLevel(logging.WARNING)
 # Create the Telethon client
 client = TelegramClient("session_name", api_id, api_hash)
 
-# Global list to store recent transactions
-recent_transactions = []
+# Initialize a deque for recent transactions with an optional max length
+recent_transactions = deque(maxlen=1000)  # Adjust maxlen based on expected usage
+
+# Set to track contracts with the first confluence ping
+first_confluence_contracts = set()
 
 # Timeframe within which to check for coinciding transactions
 TIMEFRAME = timedelta(minutes=240)
-
-# Global set to track contracts with a first confluence ping
-first_confluence_contracts = set()
 
 # Define a mapping from source group to target group (adjust as needed)
 chat_mapping = {
@@ -116,17 +117,14 @@ async def handle_message(update: Update, context: CallbackContext):
                     f"received_coin={received_coin}, percentage={percentage}")
 
         timestamp = datetime.now()
-        recent_transactions.append((name, transaction_type, contract_address, 
-                                    market_cap, received_coin, percentage, timestamp))
+        recent_transactions.append((
+            name, transaction_type, contract_address, 
+            market_cap, received_coin, percentage, timestamp
+        ))
 
-        # Clean expired transactions
-        recent_transactions = [
-            t for t in recent_transactions if timestamp - t[6] <= TIMEFRAME
-        ]
-
-        # Clean expired contracts from the set
-        active_contracts = {t[2] for t in recent_transactions}
-        first_confluence_contracts.intersection_update(active_contracts)
+        # Remove old transactions based on the timeframe
+        while recent_transactions and timestamp - recent_transactions[0][6] > TIMEFRAME:
+            recent_transactions.popleft()
 
         # Check for confluence of buys
         buys = [t for t in recent_transactions if t[2] == contract_address and t[1] == "Buy"]
@@ -134,29 +132,28 @@ async def handle_message(update: Update, context: CallbackContext):
         if len(buys) > 1:
             sells = [t for t in recent_transactions if t[2] == contract_address and t[1] == "Sell"]
 
-            # Construct the DEX URL with the contract address (CA)
+            # Construct the DEX link and the confluence message
             dex_url = f"https://dexscreener.com/solana/{contract_address}"
-
-            # Initialize the confluence message
             confluence_message = (
-                f"{received_coin} | <a href='{dex_url}'>DEX</a>\n"  # Clickable DEX text
-                f"<code>{contract_address}</code>\n"  # Contract address in a code block for easy copying
+                f"{received_coin} | <a href='{dex_url}'>DEX</a>\n"  # Clickable DEX link
+                f"<code>{contract_address}</code>\n"  # Contract address as a code block
             )
 
-            # Add buys
+            # Add buys and sells to the message
             for t in buys:
-                confluence_message += f"🟢 {t[0]} - {t[5]} -> ${t[3]} mc\n"  # Example: 🟢 miskens - 0.42% -> $32,783 mc
-
-            # Add sells
+                confluence_message += f"🟢 {t[0]} - {t[5]} -> ${t[3]} mc\n"
             for t in sells:
-                confluence_message += f"🔴 {t[0]} - {t[5]} -> ${t[3]} mc\n"  # Example: 🔴 miskens - 0.30% -> $32,783 mc
+                confluence_message += f"🔴 {t[0]} - {t[5]} -> ${t[3]} mc\n"
 
-            # Add the #first tag only if this is the first confluence
+            # Add the #first tag if this is the first confluence
             if contract_address not in first_confluence_contracts:
                 confluence_message += "\n#first"
                 first_confluence_contracts.add(contract_address)
 
-            await update.message.reply_text(confluence_message, parse_mode='HTML', disable_web_page_preview=True)
+            # Send the message with HTML formatting and disable the link preview
+            await update.message.reply_text(
+                confluence_message, parse_mode='HTML', disable_web_page_preview=True
+            )
     else:
         logger.info("No match found.")
 
