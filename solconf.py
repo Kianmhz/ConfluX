@@ -139,11 +139,18 @@ async def handle_message(update: Update, context: CallbackContext):
                 f"<code>{contract_address}</code>\n"  # Contract address as a code block
             )
 
-            # Add buys and sells to the message
-            for t in buys:
-                confluence_message += f"🟢 {t[0]} - {t[5]} -> ${t[3]} mc\n"
-            for t in sells:
-                confluence_message += f"🔴 {t[0]} - {t[5]} -> ${t[3]} mc\n"
+            # Add buys and sells to a combined list
+            all_transactions = buys + sells
+
+            # Sort all transactions by timestamp
+            all_transactions.sort(key=lambda x: x[6])  # Sort by timestamp (x[6])
+
+            # Add buys and sells to the message in order
+            for t in all_transactions:
+                if t[1] == "Buy":
+                    confluence_message += f"🟢 {t[0]} - {t[5]} -> ${t[3]} mc\n"
+                elif t[1] == "Sell":
+                    confluence_message += f"🔴 {t[0]} - {t[5]} -> ${t[3]} mc\n"
 
             # Add the #first tag if this is the first confluence
             if contract_address not in first_confluence_contracts:
