@@ -7,7 +7,7 @@ import logging
 import re
 import asyncio
 from datetime import datetime, timedelta
-from collections import deque  # Import deque for efficient queue management
+from collections import defaultdict
 
 # Load environment variables
 load_dotenv()
@@ -29,10 +29,9 @@ logging.getLogger('telegram').setLevel(logging.WARNING)
 # Create the Telethon client
 client = TelegramClient("session_name", api_id, api_hash)
 
-# Initialize a deque for recent transactions with an optional max length
-recent_transactions = deque(maxlen=1000)  # Adjust maxlen based on expected usage
-
-# Set to track contracts with the first confluence ping
+# Dictionary to store transactions by contract address
+transaction_log = defaultdict(list)
+# Track last activity timestamps for each contract address
 first_confluence_contracts = set()
 
 # Timeframe within which to check for coinciding transactions
@@ -89,9 +88,10 @@ async def chat_id(update: Update, context: CallbackContext):
 
 # Asynchronous function to handle incoming messages
 async def handle_message(update: Update, context: CallbackContext):
-    global recent_transactions, first_confluence_contracts
+    global transaction_log, first_confluence_contracts
 
     message = update.message.text
+    timestamp = datetime.now()
 
     # Regex pattern to extract the necessary information
     pattern = (
@@ -105,6 +105,7 @@ async def handle_message(update: Update, context: CallbackContext):
     match = re.search(pattern, message, re.DOTALL)
 
     if match:
+        # Extract the matched details
         name = match.group('name')
         transaction_type = match.group('transaction_type')
         contract_address = match.group('contract_address')
@@ -116,48 +117,39 @@ async def handle_message(update: Update, context: CallbackContext):
                     f"contract_address={contract_address}, market_cap={market_cap}, "
                     f"received_coin={received_coin}, percentage={percentage}")
 
-        timestamp = datetime.now()
-        recent_transactions.append((
-            name, transaction_type, contract_address, 
-            market_cap, received_coin, percentage, timestamp
-        ))
+        # Add transaction to the log for this contract address
+        transaction_log[contract_address].append((name, transaction_type, market_cap, received_coin, percentage, timestamp))
 
-        # Remove old transactions based on the timeframe
-        while recent_transactions and timestamp - recent_transactions[0][6] > TIMEFRAME:
-            recent_transactions.popleft()
+        # Remove old transactions for the contract address
+        transaction_log[contract_address] = [
+            t for t in transaction_log[contract_address] if timestamp - t[5] <= TIMEFRAME
+        ]
+
+        # If the list for this contract address is now empty, remove the key entirely
+        if not transaction_log[contract_address]:
+            del transaction_log[contract_address]
 
         # Check for confluence of buys
-        buys = [t for t in recent_transactions if t[2] == contract_address and t[1] == "Buy"]
-
-        if len(buys) > 1:
-            sells = [t for t in recent_transactions if t[2] == contract_address and t[1] == "Sell"]
-
-            # Construct the DEX link and the confluence message
+        recent_buys = [t for t in transaction_log[contract_address] if t[1] == "Buy"]
+        
+        if len(recent_buys) > 1:  # Confluence condition
             dex_url = f"https://dexscreener.com/solana/{contract_address}"
             confluence_message = (
-                f"{received_coin} | <a href='{dex_url}'>DEX</a>\n"  # Clickable DEX link
-                f"<code>{contract_address}</code>\n"  # Contract address as a code block
+                f"{received_coin} | <a href='{dex_url}'>DEX</a>\n"
+                f"<code>{contract_address}</code>\n"
             )
 
-            # Add buys and sells to a combined list
-            all_transactions = buys + sells
-
-            # Sort all transactions by timestamp
-            all_transactions.sort(key=lambda x: x[6])  # Sort by timestamp (x[6])
-
-            # Add buys and sells to the message in order
-            for t in all_transactions:
-                if t[1] == "Buy":
-                    confluence_message += f"🟢 {t[0]} - {t[5]} -> ${t[3]} mc\n"
-                elif t[1] == "Sell":
-                    confluence_message += f"🔴 {t[0]} - {t[5]} -> ${t[3]} mc\n"
+            # Add all recent transactions (buys and sells) in order
+            for t in transaction_log[contract_address]:
+                icon = "🟢" if t[1] == "Buy" else "🔴"
+                confluence_message += f"{icon} {t[0]} - {t[4]} -> ${t[3]} mc\n"
 
             # Add the #first tag if this is the first confluence
             if contract_address not in first_confluence_contracts:
                 confluence_message += "\n#first"
                 first_confluence_contracts.add(contract_address)
 
-            # Send the message with HTML formatting and disable the link preview
+            # Send the message with HTML formatting and disable link preview
             await update.message.reply_text(
                 confluence_message, parse_mode='HTML', disable_web_page_preview=True
             )
