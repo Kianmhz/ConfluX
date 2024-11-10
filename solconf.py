@@ -31,7 +31,7 @@ client = TelegramClient("session_name", api_id, api_hash)
 
 # Dictionary to store transactions by contract address
 transaction_log = defaultdict(list)
-# Track last activity timestamps for each contract address
+# Set to track contracts with the first confluence ping
 first_confluence_contracts = set()
 
 # Timeframe within which to check for coinciding transactions
@@ -42,6 +42,27 @@ chat_mapping = {
     "nbhsoltracker": "https://t.me/nbhsoltracker",  # Replace with actual target chat username or ID
     "nbhevm": "https://t.me/nbhevm"  # Replace with actual target chat username or ID
 }
+
+# Periodic cleanup function to remove outdated transactions from memory
+async def periodic_cleanup():
+    while True:
+        current_time = datetime.now()
+        
+        # Cleanup transaction_log
+        for contract_address in list(transaction_log.keys()):
+            # Remove outdated transactions for each contract address
+            transaction_log[contract_address] = [
+                t for t in transaction_log[contract_address] if current_time - t[5] <= TIMEFRAME
+            ]
+            # If the list is empty, remove the contract address from the log
+            if not transaction_log[contract_address]:
+                del transaction_log[contract_address]
+        
+        # Cleanup first_confluence_contracts
+        # Remove contract addresses that are no longer in transaction_log
+        first_confluence_contracts.intersection_update(transaction_log.keys())
+
+        await asyncio.sleep(600)  # Run cleanup every 10 minutes
 
 @client.on(events.NewMessage(chats=group_username))
 async def handler(event):
@@ -120,15 +141,6 @@ async def handle_message(update: Update, context: CallbackContext):
         # Add transaction to the log for this contract address
         transaction_log[contract_address].append((name, transaction_type, market_cap, received_coin, percentage, timestamp))
 
-        # Remove old transactions for the contract address
-        transaction_log[contract_address] = [
-            t for t in transaction_log[contract_address] if timestamp - t[5] <= TIMEFRAME
-        ]
-
-        # If the list for this contract address is now empty, remove the key entirely
-        if not transaction_log[contract_address]:
-            del transaction_log[contract_address]
-
         # Check for confluence of buys
         recent_buys = [t for t in transaction_log[contract_address] if t[1] == "Buy"]
         
@@ -177,6 +189,8 @@ async def main():
     async with application:
         await application.start()
         await application.updater.start_polling()
+        # Start the periodic cleanup in the background
+        asyncio.create_task(periodic_cleanup())
         await client.run_until_disconnected()
         await application.stop()
         await application.shutdown()
