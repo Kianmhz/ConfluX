@@ -154,7 +154,7 @@ async def handle_message(update: Update, context: CallbackContext):
             # Add all recent transactions (buys and sells) in order
             for t in transaction_log[contract_address]:
                 icon = "🟢" if t[1] == "Buy" else "🔴"
-                confluence_message += f"{icon} {t[0]} - {t[4]} -> ${t[3]} mc\n"
+                confluence_message += f"{icon} {t[0]} - {t[4]} -> ${t[2]} mc\n"
 
             # Add the #first tag if this is the first confluence
             if contract_address not in first_confluence_contracts:
