@@ -156,15 +156,21 @@ async def handle_message(update: Update, context: CallbackContext):
                 icon = "🟢" if t[1] == "Buy" else "🔴"
                 confluence_message += f"{icon} {t[0]} - {t[4]} -> ${t[2]} mc\n"
 
-            # Add the #first tag if this is the first confluence
+            # Add the #first tag only for the first confluence ping
             if contract_address not in first_confluence_contracts:
-                confluence_message += "\n#first"
-                first_confluence_contracts.add(contract_address)
+                # Check for multiple unique buyers only for the first ping
+                unique_buyers = set(buy[0] for buy in recent_buys)  # Track unique buyers
+                if len(unique_buyers) > 1:  # True confluence for first ping
+                    confluence_message += "\n#first"
+                    first_confluence_contracts.add(contract_address)  # Mark the first ping
+                else:
+                    return
 
             # Send the message with HTML formatting and disable link preview
             await update.message.reply_text(
                 confluence_message, parse_mode='HTML', disable_web_page_preview=True
             )
+
     else:
         logger.info("No match found.")
 
