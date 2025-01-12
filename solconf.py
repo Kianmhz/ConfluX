@@ -14,7 +14,7 @@ load_dotenv()
 
 api_id = os.getenv("API_ID")
 api_hash = os.getenv("API_HASH")
-group_username = ["nbhsoltracker", "nbhevm"]
+group_username = ["nbhsoltracker"]
 defined_bot_username = os.getenv("DEFINED_BOT_USERNAME")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
@@ -146,8 +146,10 @@ async def handle_message(update: Update, context: CallbackContext):
         
         if len(recent_buys) > 1:  # Confluence condition
             dex_url = f"https://dexscreener.com/solana/{contract_address}"
+            bullx_url = f"https://bullx.io/terminal?chainId=1399811149&address={contract_address}"
+            trojan_url = f"https://t.me/solana_trojanbot?start=r-afterhours8-{contract_address}"
             confluence_message = (
-                f"{received_coin} | <a href='{dex_url}'>DEX</a>\n"
+                f"{received_coin} | <a href='{dex_url}'>DEX</a> | <a href='{bullx_url}'>Bullx</a> | <a href='{trojan_url}'>Trojan</a>\n"
                 f"<code>{contract_address}</code>\n"
             )
 
