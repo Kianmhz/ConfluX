@@ -14,7 +14,7 @@ load_dotenv()
 
 api_id = os.getenv("API_ID")
 api_hash = os.getenv("API_HASH")
-group_username = ["nbhsoltracker"]
+group_username = ["Group1", "Group2"]  # List of group usernames to monitor
 defined_bot_username = os.getenv("DEFINED_BOT_USERNAME")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
