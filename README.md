@@ -61,7 +61,7 @@ TELEGRAM_TOKEN=your_telegram_bot_token
 4. Run the bot:
 
 ```bash
-python solconf.py
+python main.py
 ```
 
 Notes:
